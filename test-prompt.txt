@@ -1,0 +1,20 @@
+Initial target IP: 192.168.1.100
+Current credentials: admin / password
+
+Step 1: Retrieve account details
+curl -s -k -u admin:password -X GET https://192.168.1.100/redfish/v1/AccountService/Accounts
+
+Successful Output:
+{
+  "Members": [
+    {
+      "@odata.id": "/redfish/v1/AccountService/Accounts/1"
+    }
+  ]
+}
+
+Step 2: Update the password using the discovered URI
+curl -i -k -u admin:password -X PATCH https://192.168.1.100/redfish/v1/AccountService/Accounts/1 -H "Content-Type: application/json" -d '{"Password":"new_secure_password"}'
+
+Successful Output:
+HTTP/1.1 200 OK
