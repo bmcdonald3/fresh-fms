@@ -1,43 +1,25 @@
-## Domain specific logic
+## Generate and execute E2E tests
 
 ### Step outcome
 
-A final plan for implementing reconciliation logic.
+A test script validating the full declarative workflow against a mock implementation of the external system.
 
 ### What to give
 
-Reconciler plan from step 5.
+The resource models (Step 3) and the reconciler logic (Step 5).
 
 ### Prompt
 
-Generate the Go code for the reconcilers designed in the previous step. The code should be formatted to fit within the `reconcile[Resource]` methods located in the generated `pkg/reconcilers/[resource]_reconciler.go` files. Ensure the code includes idempotency checks, calls to `r.Client.Update` to save status changes, and appropriate error returns to trigger requeuing on failure.
+Write a validation bash script using `curl` to simulate the user workflow. 
+Constraint 1: The script must first stand up a lightweight local mock server (e.g., a Python HTTP server) on a designated port to simulate the external hardware/API interactions defined in our concrete operations.
+Constraint 2: The script must create the necessary Fabrica resources by sending POST requests. You must wrap the resource creation `curl` commands with `set +e` and `set -e` to prevent the script from aborting on failure. Capture the HTTP status code and print the full JSON response if the creation fails.
+Constraint 3: The script must poll the Fabrica GET endpoints to check if the `status.phase` field transitions to the expected terminal state, proving that the reconciliation loop successfully interacted with the mock server.
 
 ### Context
 
-The custom logic must be implemented in the safe-to-edit user stub files (pkg/reconcilers/<resource>_reconciler.go). The generated orchestration wrapper handles event ingestion and requeuing.
+Fabrica generates standard CRUD endpoints for all defined resources. 
+- Create: POST /<resource-name-plural> (Requires "apiVersion", "kind", "metadata.name", and "spec")
+- Read: GET /<resource-name-plural>/<uid>
+- List: GET /<resource-name-plural>
 
-```go
-// Example Reconciler Implementation
-func (r *RackReconciler) reconcileRack(ctx context.Context, res *rack.Rack) error {
-    // 1. Idempotency Check
-    if res.Status.Phase == "Ready" {
-        return nil
-    }
-
-    // 2. Perform domain logic (e.g. create child resources)
-    template := r.loadTemplate(ctx, res.Spec.TemplateUID)
-    
-    // 3. Update Status
-    res.Status.Phase = "Ready"
-    res.Status.TotalChassis = template.Spec.ChassisCount
-    
-    // 4. Save state
-    if err := r.Client.Update(ctx, res); err != nil {
-        return fmt.Errorf("failed to update status: %w", err)
-    }
-
-    return nil
-}
-```
-
-Return 'nil' to stop the loop, or return an 'error' to trigger an exponential backoff retry.
+By testing against a local mock server, we validate the complete network and parsing logic of the reconciler without requiring actual hardware or waiting for network timeouts.
