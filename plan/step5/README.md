@@ -16,6 +16,10 @@ Your task is to define the reconciliation logic for the background operations id
 3. Idempotency condition: How to fast-path check if the logic has already been applied, and how to deep-check the external system to verify actual state.
 4. Terminal states: The exact string values applied to the `Status` fields upon success or failure, and the progressive states applied during execution.
 
+Interview me relentlessly about every aspect of this plan until we reach a shared understanding. Walk down each branch of the design tree, resolving dependencies between decisions one-by-one. For each question, provide your recommended answer.
+
+Ask the questions one at a time.
+
 ### Context
 
 The business logic resides in Fabrica Reconcilers. You must design this logic adhering to these constraints:
