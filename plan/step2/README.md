@@ -1,39 +1,23 @@
-## Define Fabrica resources
+## Map to Fabrica workflow
 
 ### Step outcome
 
-Resource models split into spec/status fields.
+A declarative workflow mapping that separates user intent from background execution.
 
 ### What to give
 
-The finalized plain English workflow from Step 1.
+The defined inputs and outputs from Step 1.
 
 ### Prompt
 
-Using the workflow we defined, identify the required API resources. For each resource, generate the Go structs defining the schema. You must follow the Kubernetes-style resource pattern by splitting the data into two components:
-1. `Spec`: The desired state provided by the user.
-2. `Status`: The observed state managed by the system in the background.
-If resources are hierarchical, use UID string fields to link child resources to their parents.
+Using the inputs and outputs we defined, map this process into a declarative Fabrica workflow. Differentiate the workflow into two distinct phases:
+Phase A: What desired state the user submits (based on the inputs).
+Phase B: What the background reconciliation loop must do asynchronously to execute the commands and track the outputs.
 
 ### Context
 
-Fabrica resources strictly separate data into 'Spec' and 'Status'.
-1. Spec: The desired state provided by the user. Must use 'validate' struct tags for input validation.
-2. Status: The observed state managed exclusively by the system's reconciliation loop.
-3. Relationships: Hierarchical resources are linked using UID strings (e.g., a child resource stores its parent's UID in its Spec, and the parent tracks created child UIDs in its Status).
-
-Example Resource Implementation:
-
-```go
-type UserSpec struct {
-    Email string `json:"email" validate:"required,email"`
-    Role  string `json:"role" validate:"oneof=admin user guest"`
-    ParentTeamUID string `json:"parentTeamUid,omitempty"`
-}
-
-type UserStatus struct {
-    Phase      string     `json:"phase" validate:"oneof=Pending Provisioning Ready Error"`
-    Message    string     `json:"message,omitempty"`
-    LastLogin  *time.Time `json:"lastLogin,omitempty"`
-}
-```
+This service is built using Fabrica, a framework for generating Kubernetes-style declarative APIs. 
+Architecture Overview:
+1. Declarative Design: Users do not trigger imperative actions. Instead, they declare a "Desired State" by creating or updating a JSON resource via a REST API.
+2. Asynchronous Processing: Creating or modifying a resource publishes a CloudEvent.
+3. Reconciliation Controller: A background worker receives the event, compares the "Current State" of the system to the "Desired State", and executes the concrete operations to align them.
