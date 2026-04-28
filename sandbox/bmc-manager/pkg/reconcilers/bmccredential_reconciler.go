@@ -150,6 +150,7 @@ func updateBMCPassword(ctx context.Context, client *http.Client, res *v1.BMCCred
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
 		return fmt.Errorf("rejected by BMC with HTTP %d", resp.StatusCode)
 	}
+	fmt.Printf("DEBUG: Discovered URI for %s is %s\n", res.Spec.TargetUsername, res.Status.AccountURI)
 
 	return nil
 }
