@@ -153,7 +153,6 @@ func updateBMCPassword(ctx context.Context, client *http.Client, res *v1.BMCCred
 		var bodyBytes []byte
     	bodyBytes, _ = io.ReadAll(resp.Body) 
     	return fmt.Errorf("rejected by BMC with HTTP %d: %s", resp.StatusCode, string(bodyBytes))
-}
 	}
 
 	return nil
