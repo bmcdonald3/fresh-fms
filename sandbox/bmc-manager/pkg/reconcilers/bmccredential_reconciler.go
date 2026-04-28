@@ -142,6 +142,7 @@ func updateBMCPassword(ctx context.Context, client *http.Client, res *v1.BMCCred
 	req.SetBasicAuth(res.Spec.AuthorizationUsername, res.Spec.AuthorizationPassword)
 	req.Header.Set("Content-Type", "application/json")
 
+	fmt.Printf("DEBUG: Sending PATCH to %s with body: %s\n", updateURL, string(body))
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
