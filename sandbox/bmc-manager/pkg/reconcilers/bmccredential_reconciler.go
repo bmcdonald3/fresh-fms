@@ -6,9 +6,9 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
-	"io"
 
 	v1 "github.com/example/bmc-manager/apis/example.fabrica.dev/v1"
 )
@@ -27,18 +27,20 @@ func (r *BMCCredentialReconciler) reconcileBMCCredential(ctx context.Context, re
 	httpClient := &http.Client{Transport: tr, Timeout: 15 * time.Second}
 
 	// 2. Current State Discovery Phase
+	var etag string
 	if res.Status.AccountURI == "" {
 		res.Status.Phase = "Discovering"
 		if err := r.Client.Update(ctx, res); err != nil {
 			return fmt.Errorf("failed to save Discovering phase: %w", err)
 		}
 
-		uri, err := discoverAccountURI(ctx, httpClient, res)
+		uri, discoveredEtag, err := discoverAccountURI(ctx, httpClient, res)
 		if err != nil {
 			return r.handleError(ctx, res, fmt.Errorf("discovery phase failed: %w", err))
 		}
-		
+
 		res.Status.AccountURI = uri
+		etag = discoveredEtag
 		if err := r.Client.Update(ctx, res); err != nil {
 			return fmt.Errorf("failed to save discovered AccountURI: %w", err)
 		}
@@ -50,7 +52,7 @@ func (r *BMCCredentialReconciler) reconcileBMCCredential(ctx context.Context, re
 		return fmt.Errorf("failed to save Updating phase: %w", err)
 	}
 
-	err := updateBMCPassword(ctx, httpClient, res)
+	err := updateBMCPassword(ctx, httpClient, res, etag)
 	if err != nil {
 		return r.handleError(ctx, res, fmt.Errorf("execution phase failed: %w", err))
 	}
@@ -74,22 +76,23 @@ func (r *BMCCredentialReconciler) handleError(ctx context.Context, res *v1.BMCCr
 }
 
 // discoverAccountURI queries the Redfish AccountService to find the precise URI for the target username
-func discoverAccountURI(ctx context.Context, client *http.Client, res *v1.BMCCredential) (string, error) {
+func discoverAccountURI(ctx context.Context, client *http.Client, res *v1.BMCCredential) (string, string, error) {
 	collectionURL := fmt.Sprintf("https://%s/redfish/v1/AccountService/Accounts", res.Spec.BMCAddress)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, collectionURL, nil)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	req.SetBasicAuth(res.Spec.AuthorizationUsername, res.Spec.AuthorizationPassword)
+	req.Header.Set("Connection", "close")
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("unexpected status code requesting accounts collection: %d", resp.StatusCode)
+		return "", "", fmt.Errorf("unexpected status code requesting accounts collection: %d", resp.StatusCode)
 	}
 
 	var collection struct {
@@ -98,7 +101,7 @@ func discoverAccountURI(ctx context.Context, client *http.Client, res *v1.BMCCre
 		} `json:"Members"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&collection); err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	// Iterate through the returned accounts to find the specific username match
@@ -106,6 +109,7 @@ func discoverAccountURI(ctx context.Context, client *http.Client, res *v1.BMCCre
 		memberURL := fmt.Sprintf("https://%s%s", res.Spec.BMCAddress, member.ODataID)
 		mReq, _ := http.NewRequestWithContext(ctx, http.MethodGet, memberURL, nil)
 		mReq.SetBasicAuth(res.Spec.AuthorizationUsername, res.Spec.AuthorizationPassword)
+		mReq.Header.Set("Connection", "close")
 
 		mResp, mErr := client.Do(mReq)
 		if mErr != nil {
@@ -116,19 +120,24 @@ func discoverAccountURI(ctx context.Context, client *http.Client, res *v1.BMCCre
 			UserName string `json:"UserName"`
 		}
 		json.NewDecoder(mResp.Body).Decode(&account)
+		
+		// Capture ETag before closing body
+		etag := mResp.Header.Get("ETag")
 		mResp.Body.Close()
 
 		if account.UserName == res.Spec.TargetUsername {
-			return member.ODataID, nil
+			return member.ODataID, etag, nil
 		}
 	}
 
-	return "", fmt.Errorf("target account '%s' not found on BMC", res.Spec.TargetUsername)
+	return "", "", fmt.Errorf("target account '%s' not found on BMC", res.Spec.TargetUsername)
 }
 
 // updateBMCPassword executes the HTTP PATCH to align the desired credentials
-func updateBMCPassword(ctx context.Context, client *http.Client, res *v1.BMCCredential) error {
-	fmt.Printf("DEBUG: Discovered URI for %s is %s\n", res.Spec.TargetUsername, res.Status.AccountURI)
+func updateBMCPassword(ctx context.Context, client *http.Client, res *v1.BMCCredential, etag string) error {
+	// 1-second delay to allow the BMC's management daemon to release the session lock
+	time.Sleep(1 * time.Second)
+
 	updateURL := fmt.Sprintf("https://%s%s", res.Spec.BMCAddress, res.Status.AccountURI)
 
 	payload := map[string]string{
@@ -142,8 +151,13 @@ func updateBMCPassword(ctx context.Context, client *http.Client, res *v1.BMCCred
 	}
 	req.SetBasicAuth(res.Spec.AuthorizationUsername, res.Spec.AuthorizationPassword)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Connection", "close")
+	
+	if etag != "" {
+		req.Header.Set("If-Match", etag)
+	}
 
-	fmt.Printf("DEBUG: Sending PATCH to %s with body: %s\n", updateURL, string(body))
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -152,8 +166,8 @@ func updateBMCPassword(ctx context.Context, client *http.Client, res *v1.BMCCred
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
 		var bodyBytes []byte
-    	bodyBytes, _ = io.ReadAll(resp.Body) 
-    	return fmt.Errorf("rejected by BMC with HTTP %d: %s", resp.StatusCode, string(bodyBytes))
+		bodyBytes, _ = io.ReadAll(resp.Body)
+		return fmt.Errorf("rejected by BMC with HTTP %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	return nil
