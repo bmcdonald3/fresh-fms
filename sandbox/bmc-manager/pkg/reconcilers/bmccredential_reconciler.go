@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+	"io"
 
 	v1 "github.com/example/bmc-manager/apis/example.fabrica.dev/v1"
 )
