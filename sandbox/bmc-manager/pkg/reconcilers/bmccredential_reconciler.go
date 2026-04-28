@@ -154,9 +154,7 @@ func updateBMCPassword(ctx context.Context, client *http.Client, res *v1.BMCCred
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Connection", "close")
 	
-	if etag != "" {
-		req.Header.Set("If-Match", etag)
-	}
+	req.Header.Set("If-Match", "*")
 
 	resp, err := client.Do(req)
 	if err != nil {
