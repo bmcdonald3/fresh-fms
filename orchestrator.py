@@ -2,7 +2,10 @@ import os
 import subprocess
 from openai import OpenAI
 
-client = OpenAI()
+client = OpenAI(
+    base_url="https://openrouter.ai/api/v1",
+    api_key=os.environ.get("OPENROUTER_API_KEY")
+)
 
 # ---------------------------------------------------------------------------
 # Prompt Templates
@@ -59,7 +62,7 @@ Reconciler Code:
 
 def call_llm(system_prompt, user_content):
     response = client.chat.completions.create(
-        model="gpt-4o", # Replace with your preferred model
+        model="openrouter/free",
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content}
@@ -97,7 +100,6 @@ def run_with_auto_correction(llm_prompt, input_data, script_name, max_retries=3)
             
         print(f"Execution failed. Exit code: {returncode}. Initiating self-correction.")
         
-        # Append the error log to the prompt for the next iteration
         current_input = f"""
         Previous output generated an error. 
         Original Request Data: {input_data}
@@ -142,7 +144,6 @@ def main():
     print("[Step 5] Generating Reconciler Logic...")
     step5_input = f"Structs:\n{state['step3_structs']}\n\nWorkflow:\n{state['step2_workflow']}"
     state["step5_reconciler"] = call_llm(STEP_5_PROMPT, step5_input)
-    # Note: To auto-correct Step 5, the script would need to write the file into the generated Fabrica directory and run `go build`
 
     print("[Step 6] Generating and executing E2E Tests...")
     state["step6_test"] = run_with_auto_correction(STEP_6_PROMPT, state["step5_reconciler"], "e2e_test.sh")
