@@ -149,7 +149,10 @@ func updateBMCPassword(ctx context.Context, client *http.Client, res *v1.BMCCred
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("rejected by BMC with HTTP %d", resp.StatusCode)
+		var bodyBytes []byte
+    	bodyBytes, _ = io.ReadAll(resp.Body) 
+    	return fmt.Errorf("rejected by BMC with HTTP %d: %s", resp.StatusCode, string(bodyBytes))
+}
 	}
 
 	return nil
