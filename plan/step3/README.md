@@ -30,7 +30,7 @@ type UserSpec struct {
 }
 
 type UserStatus struct {
-    Phase      string     `json:"phase" validate:"oneof=Pending Provisioning Ready Error"`
+    Phase      string     `json:"phase,omitempty"`
     Message    string     `json:"message,omitempty"`
     LastLogin  *time.Time `json:"lastLogin,omitempty"`
 }
